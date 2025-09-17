@@ -771,17 +771,34 @@ async def on_interaction(inter: discord.Interaction):
         await inter.response.send_modal(modal)
         return
     if cid == "settings":
-        # Simple settings modal: timezone + default notify
+        # 1) Fetch defaults here (allowed to await)
+        u = await db.get_user(inter.user.id)
+        tz_default = u["timezone"]
+        notify_default = u["default_notify"]
+    
+        # 2) Define a modal that accepts defaults via __init__
         class SettingsModal(discord.ui.Modal, title="Settings"):
-            tz = discord.ui.TextInput(label="Timezone (IANA)", default=(await db.get_user(inter.user.id))["timezone"])
-            notify = discord.ui.TextInput(label="Default notify (dm/here)", default=(await db.get_user(inter.user.id))["default_notify"])
+            def __init__(self, tz_def: str, notify_def: str):
+                super().__init__(timeout=300)
+                self.tz = discord.ui.TextInput(
+                    label="Timezone (IANA)", default=tz_def
+                )
+                self.notify = discord.ui.TextInput(
+                    label="Default notify (dm/here)", default=notify_def
+                )
+                self.add_item(self.tz)
+                self.add_item(self.notify)
+    
             async def on_submit(self, i: discord.Interaction):
                 tzv = self.tz.value.strip()
                 nv = self.notify.value.strip().lower()
-                if nv not in ("dm","here"): nv = "dm"
+                if nv not in ("dm", "here"):
+                    nv = "dm"
                 await db.set_user(i.user.id, tzv, nv)
-                await i.response.send_message("✅ Settings saved.", ephemeral=EPHEMERAL)
-        await inter.response.send_modal(SettingsModal())
+                await i.response.send_message("✅ Settings saved.", ephemeral=True)
+    
+        # 3) Instantiate with defaults (no await in the modal itself)
+        await inter.response.send_modal(SettingsModal(tz_default, notify_default))
         return
     if cid == "refresh":
         user = await db.get_user(inter.user.id)
